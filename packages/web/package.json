@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node --import ../coding-agent/src/experimental/source-resolver.ts server.ts",
+    "knowledge:ingest": "python knowledge/scripts/ingest.py && python knowledge/scripts/validate.py",
+    "knowledge:build": "node --import ../coding-agent/src/experimental/source-resolver.ts knowledge-build.ts",
+    "knowledge:reindex": "node --import ../coding-agent/src/experimental/source-resolver.ts knowledge-reindex.ts",
     "build": "vite build",
     "preview": "node --import ../coding-agent/src/experimental/source-resolver.ts server.ts --production",
     "start": "node --import ../coding-agent/src/experimental/source-resolver.ts server.ts --production",

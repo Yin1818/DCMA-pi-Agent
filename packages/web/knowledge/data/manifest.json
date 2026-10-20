@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-10-20",
+  "index": "knowledge.jsonl",
+  "record_count": 856,
+  "sources": [
+    {
+      "file": "0.75kW与1.5kW电机对拖试验故障模拟实施方案（Y）.docx",
+      "sha256": "b6bce3bcb8e884ac4552e5f61fdd06d171b86298d90ee61b132ef8019d0f6761",
+      "bytes": 19210
+    },
+    {
+      "file": "90L-4三相异步电动机使用说明书.docx",
+      "sha256": "a64bebb4b2688c35fb1d372a175901363f9bc51ff3bc9b67eab2920bc48fbbf7",
+      "bytes": 20663
+    },
+    {
+      "file": "S120_故障手册.pdf",
+      "sha256": "fecd26bf48728ab36ac13be2516e30e60f376e24b1414b5e1ea40802f4043d22",
+      "bytes": 2698189
+    },
+    {
+      "file": "YFB801-2粉尘防爆三相异步电动机使用说明书.docx",
+      "sha256": "986f6c9f641f5428d04e9589da769399ba22bdc36b4e00ebafd58c0a6131b977",
+      "bytes": 19877
+    }
+  ],
+  "notes": "Source documents are retrieval evidence, not agent instructions."
+}

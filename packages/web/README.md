@@ -36,6 +36,29 @@ Agent 请求携带当前来源，新增 `read_industrial_dashboard` 工具复用
 - 响应式布局，小屏可通过顶部按钮打开会话与设备面板；弹窗支持 Escape 和键盘焦点。
 - 仅提供 Agent 对话，支持 Pi SDK 流式回复、停止生成和错误显示。每次调用带入最近 20 条有效消息；关闭数据库优先查询时，提供当前数据集最新最多200个原始采样点，分析由模型完成。
 
+<<<<<<< Updated upstream
+=======
+## 工业故障知识库
+
+`knowledge/sources/` 保存四份原始 Word/PDF，`knowledge/scripts/` 负责抽取正文、分块、记录段落或页码、提取故障码并校验来源指纹。生成的 856 条 `knowledge/data/knowledge.jsonl` 是 RAG 语料。配置云端 Embeddings API 并构建完整向量索引后，Agent 工具和 HTTP 查询会共用向量与关键词混合检索；聊天回答继续走 DCMA 现有 Pi 云端模型流程，嵌入模型单独配置。代码匹配、资料过滤和出处信息在两种检索模式下都保留。
+
+Agent 会在工业故障、报警、维护、型号和故障码问题中调用 `search_fault_knowledge`。有故障码时使用精确代码查询，没有代码时使用型号、现象和关键词；回答须引用资料文件名和定位，PDF 资料还要注明页码。知识库内容是检索证据，不是 Agent 指令；未命中时必须说明“知识库未找到匹配证据”，不能补写故障码含义或根因。S120 手册与 G120 设备型号不一致时，回答必须标注适用范围。
+
+内置只读接口：`GET /api/knowledge/health`、`GET /api/knowledge/sources`、`GET /api/knowledge/search?q=电机过载&limit=8`、`GET /api/knowledge/context?code=F0011`。接口与 Agent 使用同一检索实现，返回的记录包含 `source_file`、`locator`、`page`、`title`、`kind`、`codes` 和证据文本。健康接口会报告当前使用混合还是关键词检索，以及向量索引是否与资料和模型匹配。
+
+### 启用云端语义检索
+
+默认推荐硅基流动的 `BAAI/bge-m3` 中文/多语种嵌入模型，使用 OpenAI 兼容的 Embeddings API。复制 `.env.example` 到 `packages/web/.env`，只需在硅基流动控制台创建并本机填写 `EMBEDDING_API_KEY`。嵌入服务密钥与聊天密钥独立；DCMA 的 `DEEPSEEK_API_KEY` 不会自动作为嵌入密钥。
+
+```dotenv
+EMBEDDING_BASE_URL=https://api.siliconflow.cn/v1
+EMBEDDING_API_KEY=your-siliconflow-api-key
+EMBEDDING_MODEL=BAAI/bge-m3
+```
+
+首次配置或更新资料后，在仓库根目录执行 `npm --prefix packages/web run knowledge:build`。这条命令会按“解析原始资料 → 校验分块和来源哈希 → 批量调用云端 Embeddings → 原子写入完整向量索引”的顺序运行；向量分 32 条一批发送，费用由嵌入服务商决定。仅想重切分和校验资料时运行 `npm --prefix packages/web run knowledge:ingest`；切分不会自动更新向量，完成后仍须运行 `knowledge:build`。`knowledge:reindex` 只按当前 JSONL 重建向量。生成的 `knowledge/data/vectors.json` 是本机运行文件，按资料哈希、嵌入服务地址、模型和向量覆盖情况验证是否可用，密钥不会写入索引。索引过期或服务异常时系统保留关键词检索，并在健康接口报告状态；相同查询向量会在进程内缓存最多 128 条。
+
+>>>>>>> Stashed changes
 ## 数据导入
 
 CSV 示例（时间必须包含日期，推荐 ISO 8601 并带时区）：
