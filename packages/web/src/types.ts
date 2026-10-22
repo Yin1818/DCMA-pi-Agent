@@ -1,3 +1,4 @@
+import type { ChartReference } from "../chart-contracts.ts";
 export interface Device {
 	id: string;
 	code: string;
@@ -41,6 +42,7 @@ export interface ChartSample extends Omit<ChartPoint, "value"> {
 	value: number | null;
 }
 export interface ChatMessage {
+	charts?: ChartReference[];
 	id: string;
 	role: "user" | "assistant";
 	content: string;

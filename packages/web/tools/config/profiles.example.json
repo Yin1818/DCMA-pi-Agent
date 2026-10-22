@@ -1,0 +1,12 @@
+{
+  "profiles": [
+    {
+      "table": "real_data_01",
+      "manufacturer": null,
+      "model": null,
+      "version": null,
+      "source": "FICTITIOUS FORMAT EXAMPLE ONLY; replace with reviewed local source before activation",
+      "units": {}
+    }
+  ]
+}

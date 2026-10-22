@@ -10,7 +10,7 @@
     "dev:database": "npm run dev --workspace database",
     "check": "npm run check --workspaces",
     "build": "npm run build --workspace frontend",
-    "test": "node --test database/test/server.test.ts database/test/dashboard-query.test.ts database/test/code-events.test.ts frontend/test/dashboard.test.ts"
+    "test": "node --test database/test/server.test.ts database/test/dashboard-query.test.ts database/test/analysis-query.test.ts database/test/code-events.test.ts frontend/test/dashboard.test.ts"
   },
   "devDependencies": {
     "@types/node": "22.19.19",

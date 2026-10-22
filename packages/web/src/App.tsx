@@ -211,6 +211,13 @@ export function App() {
 				},
 				controller.signal,
 				(delta) => updateReply((message) => ({ ...message, content: message.content + delta })),
+				(chart) =>
+					updateReply((message) => ({
+						...message,
+						charts: (message.charts ?? []).some((item) => item.id === chart.id)
+							? message.charts
+							: [...(message.charts ?? []), chart].slice(0, 3),
+					})),
 			);
 			updateReply((message) => ({
 				...message,
@@ -331,7 +338,13 @@ export function App() {
 					</output>
 				)}
 				{conversation ? (
-					<ChatView messages={conversation.messages} isStreaming={busy} />
+					<ChatView
+						messages={conversation.messages}
+						isStreaming={busy}
+						onRequery={(text) => {
+							void sendMessage(text);
+						}}
+					/>
 				) : (
 					<WelcomeView
 						onSelectSuggestion={(text) => {

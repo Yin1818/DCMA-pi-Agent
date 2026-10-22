@@ -1,5 +1,5 @@
 import { Paperclip, Send, Square } from "lucide-react";
-import { type KeyboardEvent, useRef, useState } from "react";
+import { type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
 import { defaultWebKeybindings } from "../keyboard.ts";
 export function ChatInput({
 	onSendMessage,
@@ -13,7 +13,14 @@ export function ChatInput({
 	onImport: () => void;
 }) {
 	const [value, setValue] = useState("");
+	const textarea = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
+	useLayoutEffect(() => {
+		const input = textarea.current;
+		if (!input) return;
+		input.style.height = "28px";
+		if (value) input.style.height = `${Math.min(input.scrollHeight, 128)}px`;
+	}, [value]);
 	const send = () => {
 		if (!value.trim() || disabled) return;
 		onSendMessage(value.trim());
@@ -43,6 +50,7 @@ export function ChatInput({
 						<Paperclip className="w-4 h-4" />
 					</button>
 					<textarea
+						ref={textarea}
 						aria-label="问题输入"
 						value={value}
 						maxLength={8000}
@@ -56,7 +64,7 @@ export function ChatInput({
 						}}
 						disabled={disabled}
 						placeholder="输入问题，Enter 发送，Shift+Enter 换行…"
-						rows={2}
+						rows={1}
 						className="min-w-0 flex-1 bg-transparent outline-none text-sm resize-none px-2 py-1 max-h-32 disabled:opacity-50"
 					/>
 					{disabled ? (

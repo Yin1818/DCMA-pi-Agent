@@ -3,7 +3,7 @@ import type { Connection as CoreConnection } from "mysql2";
 import { createCodeHistory, type CodeHistoryOptions } from "./code-events.ts";
 import type { DatabaseCatalog, DatabaseRows, DatabaseTable } from "./types.ts";
 import { collectionTimeSql, makeDashboardData, normalizeRecord } from "./dashboard-data.ts";
-import { dashboardTables, type DashboardData, type DashboardHistory, type DashboardRange, type DashboardSource, type DashboardTable } from "./dashboard-types.ts";
+import { dashboardTables, fieldLabels, type DashboardData, type DashboardHistory, type DashboardRange, type DashboardRecord, type DashboardSource, type DashboardTable } from "./dashboard-types.ts";
 
 const sources = ["real_data", "real_data_01", "real_data_02", "real_data_03", "real_data_04"];
 let pool: Pool | undefined;
@@ -39,8 +39,19 @@ function getPool(): Pool {
 
 // The account may have broad permissions; every operation runs in a read-only transaction.
 async function readOnly<T>(operation: (connection: PoolConnection) => Promise<T>, signal?: AbortSignal): Promise<T> {
+	signal ??= AbortSignal.timeout(15000);
 	signal?.throwIfAborted();
-	const connection = await getPool().getConnection();
+	const acquiring = getPool().getConnection();
+	const connection = await new Promise<PoolConnection>((resolve, reject) => {
+		const cancel = () => { reject(signal?.reason ?? new Error("查询已取消")); };
+		signal?.addEventListener("abort", cancel, { once: true });
+		void acquiring.then((connection) => {
+			signal?.removeEventListener("abort", cancel);
+			if (signal?.aborted) { connection.release(); reject(signal.reason); }
+			else resolve(connection);
+		}, (error: unknown) => { signal?.removeEventListener("abort", cancel); reject(error); });
+		if (signal?.aborted) cancel();
+	});
 	const abort = () => connection.destroy();
 	signal?.addEventListener("abort", abort, { once: true });
 	try {
@@ -56,6 +67,19 @@ async function readOnly<T>(operation: (connection: PoolConnection) => Promise<T>
 		signal?.removeEventListener("abort", abort);
 		connection.release();
 	}
+}
+
+async function waitForCatalog(refresh: boolean, signal?: AbortSignal): Promise<DatabaseTable[]> {
+	signal?.throwIfAborted();
+	const pending = listDatabaseTables(refresh);
+	if (!signal) return pending;
+	return new Promise((resolve, reject) => {
+		const cancel = () => reject(signal.reason);
+		signal.addEventListener("abort", cancel, { once: true });
+		void pending.then((value) => { signal.removeEventListener("abort", cancel); resolve(value); },
+			(error: unknown) => { signal.removeEventListener("abort", cancel); reject(error); });
+		if (signal.aborted) cancel();
+	});
 }
 
 export function databaseError(error: unknown): string {
@@ -129,9 +153,9 @@ export async function listDatabaseTables(refresh = false): Promise<DatabaseTable
 	return catalogPromise;
 }
 
-export async function getDatabaseCatalog(refresh = false): Promise<DatabaseCatalog> {
+export async function getDatabaseCatalog(refresh = false, signal?: AbortSignal): Promise<DatabaseCatalog> {
 	try {
-		const tables = await listDatabaseTables(refresh);
+		const tables = await waitForCatalog(refresh, signal);
 		return {
 			configured: true,
 			connected: true,
@@ -156,16 +180,25 @@ export interface DatabaseReadOptions {
 	schema: string;
 	table: string;
 	limit?: number;
+	columns?: string[];
+	offset?: number;
+	direction?: "asc" | "desc";
 	filters?: { column: string; operator: "=" | ">=" | "<="; value: string | number }[];
 }
 export async function readDatabaseRows(options: DatabaseReadOptions, signal?: AbortSignal): Promise<DatabaseRows> {
-	const table = (await listDatabaseTables()).find(
+	const table = (await waitForCatalog(false, signal)).find(
 		(item) => item.schema === options.schema && item.name === options.table,
 	);
 	if (!table) throw new Error("只能读取目录中列出的 real_data 与 real_data_01 至 real_data_04 数据源。");
 	const limit = options.limit ?? 20;
 	if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("每次读取 1 至 200 行。");
 	const filters = options.filters ?? [];
+	const offset = options.offset ?? 0;
+	const direction = options.direction ?? "desc";
+	if (!Number.isInteger(offset) || offset < 0 || offset > 10000 || !["asc", "desc"].includes(direction) ||
+		(options.columns && (!options.columns.length || options.columns.length > 31 ||
+			options.columns.some((name) => !table.columns.some((column) => column.name === name)))))
+		throw new Error("字段、排序或分页参数无效。");
 	if (
 		filters.length > 4 ||
 		filters.some(
@@ -185,12 +218,12 @@ export async function readDatabaseRows(options: DatabaseReadOptions, signal?: Ab
 	return readOnly(async (connection) => {
 		const [rows] = await connection.execute<RowDataPacket[]>(
 			{
-				sql: `SELECT * FROM ${escapeId(table.schema)}.${escapeId(table.name)}
+				sql: `SELECT ${options.columns ? options.columns.map((name) => escapeId(name)).join(",") : "*"} FROM ${escapeId(table.schema)}.${escapeId(table.name)}
 			${filters.length ? `WHERE ${filters.map((filter) => `${escapeId(filter.column)} ${filter.operator} ?`).join(" AND ")}` : ""}
-			${orderBy ? `ORDER BY ${escapeId(orderBy)} DESC` : ""} LIMIT ?`,
+			${orderBy ? `ORDER BY ${escapeId(orderBy)} ${direction === "asc" ? "ASC" : "DESC"}${orderBy !== "id" && table.columns.some((column) => column.name === "id") ? `, id ${direction === "asc" ? "ASC" : "DESC"}` : ""}` : ""} LIMIT ? OFFSET ?`,
 				timeout: 5000,
 			},
-			[...filters.map((filter) => filter.value), limit + 1],
+			[...filters.map((filter) => filter.value), limit + 1, offset],
 		);
 		const candidates = rows
 			.slice(0, limit)
@@ -221,7 +254,7 @@ export async function readDatabaseRows(options: DatabaseReadOptions, signal?: Ab
 			returned: selected.length,
 			hasMore: rows.length > selected.length,
 			orderBy,
-			note: `${orderBy ? `按 ${orderBy} 降序返回` : "未找到时间或主键字段，行顺序不确定"}；结果最多200行/64KB，长文本或二进制会截断。仅代表本次返回的有界数据窗口，不是全库统计。MySQL 日期字符串未附带时区，字段单位与设备关联需根据数据库说明确认。`,
+			note: `${orderBy ? `按 ${orderBy} ${direction}返回` : "未找到时间或主键字段，行顺序不确定"}；偏移${offset}。结果最多200行/64KB，长文本或二进制会截断。并发写入时偏移分页不保证跨请求快照一致。仅代表本次返回的有界数据窗口，不是全库统计。MySQL 日期字符串未附带时区，字段单位与设备关联需根据数据库说明确认。`,
 		};
 	}, signal);
 }
@@ -231,9 +264,64 @@ export async function closeDatabase(): Promise<void> {
 	pool = undefined;
 }
 
+// Complete bounded window in one read-only transaction. Refuse rather than return partial statistics.
+export async function readAnalysisRows(options: DashboardRange & { table: DashboardTable }, signal?: AbortSignal): Promise<{
+	records: DashboardRecord[]; invalidTimeRows: number; excludedIdentityRows: number; queriedAt: string; availableFields: string[];
+}> {
+	const from = Date.parse(options.from), to = Date.parse(options.to);
+	if (!dashboardTables.includes(options.table) || !Number.isFinite(from) || !Number.isFinite(to) || from > to ||
+		to - from > 7 * 86400000 || new Date(from).toISOString() !== options.from || new Date(to).toISOString() !== options.to)
+		throw new Error("ANALYSIS_INVALID_RANGE");
+	const metadata = (await waitForCatalog(false, signal)).find((item) => item.schema === "dcma" && item.name === options.table);
+	if (!metadata || ["id", "timestamp", "device_name", "inverter_name"].some((name) => !metadata.columns.some((column) => column.name === name)))
+		throw new Error("ANALYSIS_UNAVAILABLE");
+	return readOnly(async (connection) => {
+		const qualified = `${escapeId("dcma")}.${escapeId(options.table)}`;
+		const identified = "device_name IS NOT NULL AND TRIM(device_name) <> '' AND inverter_name IS NOT NULL AND TRIM(inverter_name) <> ''";
+		const [identities] = await connection.query<RowDataPacket[]>({
+			sql: `SELECT DISTINCT device_name, inverter_name FROM ${qualified} WHERE ${identified} LIMIT 2`, timeout: 10000,
+		});
+		if (identities.length > 1) throw new Error("ANALYSIS_MIXED_DEVICES");
+		const [counts] = await connection.query<RowDataPacket[]>({
+			sql: `SELECT SUM((${collectionTimeSql}) IS NULL) AS invalid_times, SUM(NOT (${identified})) AS excluded FROM ${qualified}`, timeout: 10000,
+		});
+		const rows: RowDataPacket[] = [];
+		if (identities.length) {
+			const columns = Object.keys(fieldLabels).filter((name) => metadata.columns.some((column) => column.name === name)).map((name) => escapeId(name)).join(",");
+			// Prepared binary reads preserve FLOAT precision, matching readDashboard/readSampleHistory.
+			const stream = (connection.connection as unknown as CoreConnection).execute({
+				sql: `SELECT * FROM (SELECT ${columns}, ${collectionTimeSql} AS __collection_ms FROM ${qualified}
+				WHERE device_name <=> ? AND inverter_name <=> ?) AS analysis_rows
+				WHERE __collection_ms BETWEEN ? AND ? ORDER BY __collection_ms ASC, id ASC LIMIT 20001`, timeout: 10000,
+			}, [identities[0].device_name, identities[0].inverter_name, from, to]).stream({ highWaterMark: 32 });
+			const abortStream = () => stream.destroy(new Error("分析查询已取消"));
+			signal?.addEventListener("abort", abortStream, { once: true });
+			let bytes = 0;
+			try {
+				signal?.throwIfAborted();
+				for await (const item of stream) {
+					signal?.throwIfAborted();
+					const row = item as RowDataPacket;
+					bytes += Buffer.byteLength(JSON.stringify(row));
+					if (rows.length >= 20000 || bytes > 16 * 1024 * 1024) throw new Error("ANALYSIS_TOO_LARGE");
+					rows.push(row);
+				}
+			} finally { signal?.removeEventListener("abort", abortStream); stream.destroy(); }
+		}
+		const records = rows.map(normalizeRecord);
+		// SQL and JS parsers must agree before claiming complete time-window results.
+		if (records.some((record, index) => !record.acquiredAt || Date.parse(record.acquiredAt) < from || Date.parse(record.acquiredAt) > to ||
+			Date.parse(record.acquiredAt) !== Number(rows[index].__collection_ms)))
+			throw new Error("ANALYSIS_TIME_MISMATCH");
+		const invalidTimeRows = Number(counts[0]?.invalid_times ?? 0), excludedIdentityRows = Number(counts[0]?.excluded ?? 0);
+		if (![invalidTimeRows, excludedIdentityRows].every((value) => Number.isSafeInteger(value) && value >= 0)) throw new Error("ANALYSIS_TOO_LARGE");
+		return { records, invalidTimeRows, excludedIdentityRows, queriedAt: new Date().toISOString(), availableFields: metadata.columns.map((column) => column.name) };
+	}, signal);
+}
+
 export async function readDashboard(table: DashboardTable, limit: 50 | 100 | 200, signal?: AbortSignal): Promise<DashboardData> {
 	if (!dashboardTables.includes(table) || ![50, 100, 200].includes(limit)) throw new Error("无效的展板参数");
-	const catalog = (await listDatabaseTables()).filter((item) => item.schema === "dcma");
+	const catalog = (await waitForCatalog(false, signal)).filter((item) => item.schema === "dcma");
 	return readOnly(async (connection) => {
 		const summaries: DashboardSource[] = [];
 		let selectedRows: Record<string, unknown>[] = [];
@@ -273,7 +361,7 @@ export async function readDashboard(table: DashboardTable, limit: 50 | 100 | 200
 
 export async function readCodeHistory(options: CodeHistoryOptions, signal?: AbortSignal) {
 	if (!dashboardTables.includes(options.table)) throw new Error("无效的展板参数");
-	const metadata = (await listDatabaseTables()).find((item) => item.schema === "dcma" && item.name === options.table);
+	const metadata = (await waitForCatalog(false, signal)).find((item) => item.schema === "dcma" && item.name === options.table);
 	if (!metadata || ["id", "timestamp", "device_name", "inverter_name", "fault_code", "alarm_code"].some((field) => !metadata.columns.some((column) => column.name === field))) throw new Error("CODE_HISTORY_UNAVAILABLE");
 	return readOnly(async (connection) => {
 		const qualified = `${escapeId("dcma")}.${escapeId(options.table)}`;
@@ -298,7 +386,7 @@ export async function readSampleHistory(options: DashboardRange & { table: Dashb
 	const { table, limit, page, from, to } = options;
 	if (!dashboardTables.includes(table) || ![50, 100, 200].includes(limit) || !Number.isInteger(page) || page < 1 || page > 1000 ||
 		!Number.isFinite(Date.parse(from)) || !Number.isFinite(Date.parse(to)) || new Date(from).toISOString() !== from || new Date(to).toISOString() !== to || from > to) throw new Error("无效的时段查询参数");
-	const metadata = (await listDatabaseTables()).find((item) => item.schema === "dcma" && item.name === table);
+	const metadata = (await waitForCatalog(false, signal)).find((item) => item.schema === "dcma" && item.name === table);
 	if (!metadata || ["id", "timestamp", "device_name", "inverter_name"].some((field) => !metadata.columns.some((column) => column.name === field))) throw new Error("SAMPLE_HISTORY_UNAVAILABLE");
 	return readOnly(async (connection) => {
 		const qualified = `${escapeId("dcma")}.${escapeId(table)}`;

@@ -1,4 +1,5 @@
-import { dashboardTables } from "./dashboard-data.ts";
+import { dashboardTables } from "../../../dashboard/database/dashboard-types.ts";
+import { validateChartReference } from "../chart-contracts.ts";
 import { createDemoDatasets, defaultSettings, initialDevices } from "./mockData.ts";
 import { parseTelemetry } from "./telemetry.ts";
 import type { AppSettings, ConversationItem, Dataset } from "./types.ts";
@@ -68,6 +69,15 @@ export function loadWorkspace(): WorkspaceState {
 					return [
 						{
 							id: message.id,
+							charts: Array.isArray(message.charts)
+								? message.charts.slice(0, 3).flatMap((value: unknown, index: number, values: unknown[]) => {
+										const chart = validateChartReference(value);
+										return chart &&
+											values.findIndex((entry) => validateChartReference(entry)?.id === chart.id) === index
+											? [chart]
+											: [];
+									})
+								: undefined,
 							role: message.role,
 							content: message.content,
 							timestamp: message.timestamp,

@@ -16,6 +16,9 @@ packages/ai/src/providers/.model-generation-*/
 # Environment
 .env
 
+# Private industrial tool configuration, reports, monitoring tasks and observations
+packages/web/.dcma-runtime/
+
 # Editor files
 .vscode/
 .zed/

@@ -1,0 +1,18 @@
+{
+  "entries": [
+    {
+      "id": "FICTITIOUS-FORMAT-EXAMPLE",
+      "manufacturer": "REPLACE_WITH_CONFIRMED_MANUFACTURER",
+      "model": "REPLACE_WITH_CONFIRMED_MODEL",
+      "version": "REPLACE_WITH_CONFIRMED_VERSION",
+      "kind": "manual",
+      "text": "Fictitious format placeholder only. Replace this entire entry with reviewed local material before activation. This text supplies no fault-code meaning or maintenance instruction.",
+      "source": {
+        "title": "FICTITIOUS FORMAT EXAMPLE ONLY",
+        "locator": "REPLACE_WITH_LOCAL_DOCUMENT_AND_SECTION",
+        "revision": "REPLACE_WITH_DOCUMENT_REVISION"
+      },
+      "codes": []
+    }
+  ]
+}

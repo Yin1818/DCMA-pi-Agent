@@ -1,3 +1,4 @@
+import { type ChartReference, validateChartReference } from "../chart-contracts.ts";
 import type { BackendStatus } from "./types.ts";
 
 export async function getBackendStatus(signal?: AbortSignal, refresh = false): Promise<BackendStatus> {
@@ -10,6 +11,7 @@ export async function streamChat(
 	payload: unknown,
 	signal: AbortSignal,
 	onDelta: (text: string) => void,
+	onChart?: (chart: ChartReference) => void,
 ): Promise<void> {
 	const response = await fetch("/api/chat", {
 		method: "POST",
@@ -35,7 +37,10 @@ export async function streamChat(
 		const event: unknown = JSON.parse(line);
 		if (!event || typeof event !== "object" || !("type" in event)) throw new Error("响应格式无效。");
 		if (event.type === "delta" && "text" in event && typeof event.text === "string") onDelta(event.text);
-		else if (event.type === "error" && "message" in event && typeof event.message === "string")
+		else if (event.type === "chart" && "chart" in event) {
+			const chart = validateChartReference(event.chart);
+			if (chart) onChart?.(chart);
+		} else if (event.type === "error" && "message" in event && typeof event.message === "string")
 			throw new Error(event.message);
 		else if (event.type === "done") finished = true;
 	};

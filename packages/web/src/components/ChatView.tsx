@@ -3,11 +3,20 @@ import { useEffect, useRef } from "react";
 import { downloadText } from "../download.ts";
 import { messageReport } from "../report.ts";
 import type { ChatMessage } from "../types.ts";
+import { AnalysisChartCard } from "./AnalysisChartCard";
 import { MessageContent } from "./MessageContent";
-export function ChatView({ messages, isStreaming }: { messages: ChatMessage[]; isStreaming: boolean }) {
+export function ChatView({
+	messages,
+	isStreaming,
+	onRequery,
+}: {
+	messages: ChatMessage[];
+	isStreaming: boolean;
+	onRequery?: (text: string) => void;
+}) {
 	const bottom = useRef<HTMLDivElement>(null);
 	const last = messages.at(-1);
-	const scrollKey = `${messages.length}:${last?.id}:${last?.content.length}`;
+	const scrollKey = `${messages.length}:${last?.id}:${last?.content.length}:${last?.charts?.length}`;
 	useEffect(() => {
 		if (scrollKey) bottom.current?.scrollIntoView({ behavior: isStreaming ? "instant" : "smooth" });
 	}, [scrollKey, isStreaming]);
@@ -30,7 +39,7 @@ export function ChatView({ messages, isStreaming }: { messages: ChatMessage[]; i
 							</span>
 						)}
 						<article
-							className={`min-w-0 max-w-[92%] sm:max-w-[88%] rounded-2xl p-4 ${message.role === "user" ? "bg-blue-600 text-white" : "bg-white border border-slate-100"}`}
+							className={`min-w-0 max-w-[92%] sm:max-w-[88%] rounded-2xl p-4 ${message.charts?.length ? "w-full" : ""} ${message.role === "user" ? "bg-blue-600 text-white" : "bg-white border border-slate-100"}`}
 						>
 							{message.role === "assistant" && (
 								<p className="text-[11px] text-slate-500 border-b border-slate-100 pb-2 mb-2">
@@ -47,6 +56,15 @@ export function ChatView({ messages, isStreaming }: { messages: ChatMessage[]; i
 							{message.status === "streaming" && (
 								<output className="block text-xs text-blue-600 mt-2 animate-pulse">正在生成…</output>
 							)}
+							{message.role === "assistant" &&
+								message.charts?.map((chart) => (
+									<AnalysisChartCard
+										key={chart.id}
+										reference={chart}
+										onRequery={onRequery}
+										disabled={isStreaming}
+									/>
+								))}
 							{(message.status === "error" || message.status === "cancelled") && (
 								<p className="text-xs text-red-600 mt-2">
 									{message.status === "error" ? "本次请求失败，可重新发送" : "生成已停止"}

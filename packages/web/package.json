@@ -11,10 +11,12 @@
     "build": "vite build",
     "preview": "node --import ../coding-agent/src/experimental/source-resolver.ts server.ts --production",
     "start": "node --import ../coding-agent/src/experimental/source-resolver.ts server.ts --production",
-    "check": "tsc -p tsconfig.json && tsc -p tsconfig.server.json"
+    "check": "tsc -p tsconfig.json && tsc -p tsconfig.server.json",
+    "test:tools": "node --import ../coding-agent/src/experimental/source-resolver.ts --test test/industrial-tools.test.ts test/tool-trace.test.ts test/tool-registry.test.ts test/telemetry.test.ts test/chart-*.test.ts"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^1.1.0",
+    "echarts": "6.1.0",
     "lucide-react": "1.52.0",
     "mysql2": "3.24.5",
     "react": "18.3.1",

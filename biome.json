@@ -32,6 +32,8 @@
 			"packages/web/src/**/*.tsx",
 			"packages/web/server.ts",
 			"packages/web/database.ts",
+			"packages/web/tools/**/*.ts",
+			"packages/web/chart-contracts.ts",
 			"packages/web/vite.config.ts",
 			"packages/coding-agent/examples/**/*.ts",
 			"packages/agent/examples/**/*.ts",
